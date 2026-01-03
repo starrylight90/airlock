@@ -1,4 +1,16 @@
-export type ToolId = 'compress' | 'resize' | 'convert'
+export type ToolId =
+  | 'compress'
+  | 'resize'
+  | 'convert'
+  | 'pdf-merge'
+  | 'pdf-split'
+  | 'pdf-rotate'
+  | 'pdf-reorder'
+  | 'pdf-watermark'
+  | 'pdf-protect'
+  | 'pdf-to-images'
+  | 'images-to-pdf'
+  | 'pdf-extract-text'
 
 export interface BaseToolOption {
   label: string

@@ -2,11 +2,21 @@ import { useRef, useState } from 'react'
 
 interface FileDropZoneProps {
   acceptedMimePrefix: string
+  accept: string
+  title: string
+  subtitle: string
   file: File | null
   onFileSelected: (file: File) => void
 }
 
-export function FileDropZone({ acceptedMimePrefix, file, onFileSelected }: FileDropZoneProps) {
+export function FileDropZone({
+  acceptedMimePrefix,
+  accept,
+  title,
+  subtitle,
+  file,
+  onFileSelected,
+}: FileDropZoneProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [isDragActive, setIsDragActive] = useState(false)
 
@@ -62,12 +72,12 @@ export function FileDropZone({ acceptedMimePrefix, file, onFileSelected }: FileD
         ref={inputRef}
         className="hidden-input"
         type="file"
-        accept="image/*"
+        accept={accept}
         onChange={onChange}
       />
       <div className="drop-zone-copy">
-        <h3>Drop an image here</h3>
-        <p>or click to browse your device</p>
+        <h3>{title}</h3>
+        <p>{subtitle}</p>
       </div>
       {file ? (
         <div className="picked-file">
