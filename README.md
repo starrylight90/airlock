@@ -8,7 +8,7 @@ Airlock is a local-first file utility suite. Every file operation runs in the br
 - Airlock is designed for privacy-sensitive workflows where local-only processing is non-negotiable.
 - The UI is built to be fast, clear, and production-friendly for open-source adoption.
 
-## Current status (Phase 2)
+## Current status (Phase 3)
 
 Implemented in this version:
 
@@ -19,6 +19,16 @@ Implemented in this version:
 - Image Compressor
 - Image Resizer (aspect ratio lock)
 - Format Converter (PNG, JPEG, WebP)
+
+Image tools added in Phase 3:
+
+- Image Crop (percentage-based crop box)
+- Rotate / Flip
+- Image Watermark (text + optional logo overlay)
+- Image Collage (multi-file grid)
+- EXIF Viewer
+- EXIF Stripper (re-export without metadata)
+- Background Remove (in-browser model)
 
 PDF tools added in Phase 2:
 
@@ -59,6 +69,7 @@ npm run test
 ```
 
 Current test coverage focuses on PDF page-selection parsing logic used by split/rotate/reorder flows.
+Phase 3 adds unit coverage for image math helpers used by crop and collage workflows.
 
 ## Project structure
 
@@ -74,6 +85,13 @@ src/
       compress.ts
       resize.ts
       convert.ts
+      crop.ts
+      rotateFlip.ts
+      watermark.ts
+      collage.ts
+      exif.ts
+      backgroundRemove.ts
+      math.ts
       shared.ts
     pdf/
       merge.ts
@@ -89,11 +107,13 @@ src/
   index.css
 ```
 
-## Known limitations (Phase 2)
+## Known limitations (Phase 3)
 
 - Password protect/unlock is intentionally marked as a transparent placeholder in this phase.
 - Per-page split currently exposes range split and a single-page preview split; full one-file-per-page bundle mode is planned for a follow-up.
 - PDF rendering uses browser memory; very large PDFs may need future streaming optimizations.
+- Background removal model can take longer on first run because model assets initialize in browser context.
+- EXIF availability depends on source format and device metadata behavior.
 
 ## Next phases
 
