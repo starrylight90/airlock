@@ -6,12 +6,25 @@ import { ToolLayout } from './shell/ToolLayout'
 import { compressImage } from './tools/image/compress'
 import { convertImage } from './tools/image/convert'
 import { resizeImage } from './tools/image/resize'
+import { cropImage } from './tools/image/crop'
+import { rotateFlipImage } from './tools/image/rotateFlip'
+import { watermarkImage } from './tools/image/watermark'
+import { collageImages } from './tools/image/collage'
+import { readExif, stripExif } from './tools/image/exif'
+import { removeImageBackground } from './tools/image/backgroundRemove'
 import type { ToolId } from './types'
 
 const IMAGE_TOOL_OPTIONS = [
   { id: 'compress', label: 'Image Compressor', subtitle: 'Shrink file size with quality control.' },
   { id: 'resize', label: 'Image Resizer', subtitle: 'Resize with aspect lock for precise dimensions.' },
   { id: 'convert', label: 'Format Converter', subtitle: 'Convert PNG, JPG, and WebP in-browser.' },
+  { id: 'crop', label: 'Image Crop', subtitle: 'Crop image using percentage-based viewport controls.' },
+  { id: 'rotate-flip', label: 'Rotate / Flip', subtitle: 'Rotate by fixed angles and flip horizontally or vertically.' },
+  { id: 'image-watermark', label: 'Image Watermark', subtitle: 'Apply text or logo watermark with placement control.' },
+  { id: 'collage', label: 'Image Collage', subtitle: 'Combine multiple images into a configurable grid layout.' },
+  { id: 'exif-view', label: 'EXIF Viewer', subtitle: 'Inspect metadata and privacy-sensitive camera fields.' },
+  { id: 'exif-strip', label: 'EXIF Stripper', subtitle: 'Re-export image without embedded metadata.' },
+  { id: 'background-remove', label: 'Background Remove', subtitle: 'Run segmentation model in-browser to isolate subject.' },
 ] as const
 
 const PDF_TOOL_OPTIONS = [
@@ -31,7 +44,18 @@ const TOOL_OPTIONS = [...IMAGE_TOOL_OPTIONS, ...PDF_TOOL_OPTIONS]
 type ToolOption = (typeof TOOL_OPTIONS)[number]
 
 function isImageTool(tool: ToolId): boolean {
-  return tool === 'compress' || tool === 'resize' || tool === 'convert'
+  return (
+    tool === 'compress' ||
+    tool === 'resize' ||
+    tool === 'convert' ||
+    tool === 'crop' ||
+    tool === 'rotate-flip' ||
+    tool === 'image-watermark' ||
+    tool === 'collage' ||
+    tool === 'exif-view' ||
+    tool === 'exif-strip' ||
+    tool === 'background-remove'
+  )
 }
 
 function App() {
@@ -52,6 +76,18 @@ function App() {
   const [watermarkText, setWatermarkText] = useState('AIRLOCK')
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.28)
   const [password, setPassword] = useState('')
+  const [cropX, setCropX] = useState(0)
+  const [cropY, setCropY] = useState(0)
+  const [cropWidth, setCropWidth] = useState(100)
+  const [cropHeight, setCropHeight] = useState(100)
+  const [imageRotateAngle, setImageRotateAngle] = useState<0 | 90 | 180 | 270>(90)
+  const [flipHorizontal, setFlipHorizontal] = useState(false)
+  const [flipVertical, setFlipVertical] = useState(false)
+  const [watermarkPosition, setWatermarkPosition] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center'>('bottom-right')
+  const [watermarkLogoFile, setWatermarkLogoFile] = useState<File | null>(null)
+  const [collagePreset, setCollagePreset] = useState('2x2')
+  const [collageGap, setCollageGap] = useState(16)
+  const [collageBg, setCollageBg] = useState('#ffffff')
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -85,6 +121,17 @@ function App() {
     setError(null)
   }
 
+  function resetToolSpecificState() {
+    setCropX(0)
+    setCropY(0)
+    setCropWidth(100)
+    setCropHeight(100)
+    setImageRotateAngle(90)
+    setFlipHorizontal(false)
+    setFlipVertical(false)
+    setWatermarkLogoFile(null)
+  }
+
   function onFileSelected(nextFile: File) {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl)
@@ -96,11 +143,19 @@ function App() {
     setMultiFiles([])
     resetOutputs()
 
+    if (!nextFile.type.startsWith('image/')) {
+      return
+    }
+
     const image = new Image()
     image.onload = () => {
       setWidth(image.naturalWidth)
       setHeight(image.naturalHeight)
       setAspectRatio(image.naturalWidth / image.naturalHeight)
+      setCropX(0)
+      setCropY(0)
+      setCropWidth(100)
+      setCropHeight(100)
     }
     image.src = preview
   }
@@ -136,6 +191,37 @@ function App() {
       } else if (tool === 'convert') {
         if (!file) throw new Error('Pick an image first.')
         result = await convertImage(file, format, quality)
+      } else if (tool === 'crop') {
+        if (!file) throw new Error('Pick an image first.')
+        result = await cropImage(file, { x: cropX, y: cropY, width: cropWidth, height: cropHeight })
+      } else if (tool === 'rotate-flip') {
+        if (!file) throw new Error('Pick an image first.')
+        result = await rotateFlipImage(file, imageRotateAngle, flipHorizontal, flipVertical)
+      } else if (tool === 'image-watermark') {
+        if (!file) throw new Error('Pick an image first.')
+        result = await watermarkImage(file, watermarkText, watermarkOpacity, watermarkPosition, watermarkLogoFile)
+      } else if (tool === 'collage') {
+        result = await collageImages(multiFiles, collagePreset, collageGap, collageBg)
+      } else if (tool === 'exif-view') {
+        if (!file) throw new Error('Pick an image first.')
+        const exif = await readExif(file)
+        const pretty = exif ? JSON.stringify(exif, null, 2) : 'No EXIF metadata found.'
+        const blob = new Blob([pretty], { type: 'application/json;charset=utf-8' })
+        setTextOutput(pretty)
+        result = {
+          blob,
+          outputName: `${file.name.replace(/\.[^.]+$/, '')}-exif.json`,
+          meta: {
+            originalBytes: file.size,
+            processedBytes: blob.size,
+          },
+        }
+      } else if (tool === 'exif-strip') {
+        if (!file) throw new Error('Pick an image first.')
+        result = await stripExif(file)
+      } else if (tool === 'background-remove') {
+        if (!file) throw new Error('Pick an image first.')
+        result = await removeImageBackground(file)
       } else if (tool === 'pdf-merge') {
         const { mergePdfs } = await import('./tools/pdf/merge')
         const mergeResult = await mergePdfs(multiFiles)
@@ -283,7 +369,7 @@ function App() {
   const activeTool = useMemo(() => TOOL_OPTIONS.find((entry) => entry.id === tool) as ToolOption, [tool])
 
   const canProcess = useMemo(() => {
-    if (tool === 'pdf-merge' || tool === 'images-to-pdf') {
+    if (tool === 'pdf-merge' || tool === 'images-to-pdf' || tool === 'collage') {
       return multiFiles.length > 0
     }
     return Boolean(file)
@@ -295,9 +381,15 @@ function App() {
   function renderControls() {
     return (
       <div className="controls-stack">
-        {(tool === 'pdf-merge' || tool === 'images-to-pdf') && (
+        {(tool === 'pdf-merge' || tool === 'images-to-pdf' || tool === 'collage') && (
           <label className="control-inline">
-            <span>{tool === 'pdf-merge' ? 'Select multiple PDF files' : 'Select multiple image files'}</span>
+            <span>
+              {tool === 'pdf-merge'
+                ? 'Select multiple PDF files'
+                : tool === 'collage'
+                  ? 'Select multiple images for collage'
+                  : 'Select multiple image files'}
+            </span>
             <input
               type="file"
               accept={tool === 'pdf-merge' ? 'application/pdf' : 'image/*'}
@@ -377,6 +469,112 @@ function App() {
                 />
               </label>
             )}
+          </>
+        )}
+
+        {tool === 'crop' && (
+          <>
+            <label className="control-inline">
+              <span>Crop X (%)</span>
+              <input type="number" min={0} max={99} value={cropX} onChange={(event) => setCropX(Math.max(0, Math.min(99, Number(event.target.value) || 0)))} />
+            </label>
+            <label className="control-inline">
+              <span>Crop Y (%)</span>
+              <input type="number" min={0} max={99} value={cropY} onChange={(event) => setCropY(Math.max(0, Math.min(99, Number(event.target.value) || 0)))} />
+            </label>
+            <label className="control-inline">
+              <span>Crop Width (%)</span>
+              <input type="number" min={1} max={100} value={cropWidth} onChange={(event) => setCropWidth(Math.max(1, Math.min(100, Number(event.target.value) || 1)))} />
+            </label>
+            <label className="control-inline">
+              <span>Crop Height (%)</span>
+              <input type="number" min={1} max={100} value={cropHeight} onChange={(event) => setCropHeight(Math.max(1, Math.min(100, Number(event.target.value) || 1)))} />
+            </label>
+          </>
+        )}
+
+        {tool === 'rotate-flip' && (
+          <>
+            <label className="control-inline">
+              <span>Rotation</span>
+              <select value={imageRotateAngle} onChange={(event) => setImageRotateAngle(Number(event.target.value) as 0 | 90 | 180 | 270)}>
+                <option value={0}>0 degrees</option>
+                <option value={90}>90 degrees</option>
+                <option value={180}>180 degrees</option>
+                <option value={270}>270 degrees</option>
+              </select>
+            </label>
+            <label className="checkbox-row">
+              <input type="checkbox" checked={flipHorizontal} onChange={(event) => setFlipHorizontal(event.target.checked)} />
+              <span>Flip horizontal</span>
+            </label>
+            <label className="checkbox-row">
+              <input type="checkbox" checked={flipVertical} onChange={(event) => setFlipVertical(event.target.checked)} />
+              <span>Flip vertical</span>
+            </label>
+          </>
+        )}
+
+        {tool === 'image-watermark' && (
+          <>
+            <label className="control-inline">
+              <span>Watermark text</span>
+              <input value={watermarkText} onChange={(event) => setWatermarkText(event.target.value)} />
+            </label>
+            <label className="control-inline">
+              <span>Optional logo overlay</span>
+              <input type="file" accept="image/*" onChange={(event) => setWatermarkLogoFile(event.target.files?.[0] ?? null)} />
+              <small>{watermarkLogoFile ? watermarkLogoFile.name : 'No logo selected (text watermark only)'}</small>
+            </label>
+            <label className="control-inline">
+              <span>Placement</span>
+              <select
+                value={watermarkPosition}
+                onChange={(event) =>
+                  setWatermarkPosition(
+                    event.target.value as 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center',
+                  )
+                }
+              >
+                <option value="top-left">Top left</option>
+                <option value="top-right">Top right</option>
+                <option value="bottom-left">Bottom left</option>
+                <option value="bottom-right">Bottom right</option>
+                <option value="center">Center</option>
+              </select>
+            </label>
+            <label className="control">
+              <span>Opacity: {Math.round(watermarkOpacity * 100)}%</span>
+              <input
+                type="range"
+                min="0.05"
+                max="1"
+                step="0.01"
+                value={watermarkOpacity}
+                onChange={(event) => setWatermarkOpacity(Number(event.target.value))}
+              />
+            </label>
+          </>
+        )}
+
+        {tool === 'collage' && (
+          <>
+            <label className="control-inline">
+              <span>Grid preset</span>
+              <select value={collagePreset} onChange={(event) => setCollagePreset(event.target.value)}>
+                <option value="2x2">2 x 2</option>
+                <option value="3x3">3 x 3</option>
+                <option value="4x2">4 x 2</option>
+              </select>
+            </label>
+            <label className="control-inline">
+              <span>Gap (px)</span>
+              <input type="number" min={0} max={96} value={collageGap} onChange={(event) => setCollageGap(Math.max(0, Number(event.target.value) || 0))} />
+            </label>
+            <label className="control-inline">
+              <span>Background color</span>
+              <input type="color" value={collageBg} onChange={(event) => setCollageBg(event.target.value)} />
+            </label>
           </>
         )}
 
@@ -464,12 +662,13 @@ function App() {
   }
 
   function renderDropZone() {
-    if (tool === 'pdf-merge' || tool === 'images-to-pdf') {
+    if (tool === 'pdf-merge' || tool === 'images-to-pdf' || tool === 'collage') {
       return (
         <section className="result-card pending">
           <h3>Multi-file Input</h3>
           <p>
-            Use the controls panel to select multiple files for {tool === 'pdf-merge' ? 'merge' : 'images-to-pdf'}.
+            Use the controls panel to select multiple files for{' '}
+            {tool === 'pdf-merge' ? 'merge' : tool === 'collage' ? 'collage' : 'images-to-pdf'}.
           </p>
         </section>
       )
@@ -506,21 +705,44 @@ function App() {
           <span>Local-First File Utilities</span>
         </div>
         <nav className="tool-switcher" aria-label="Tool selector">
-          {TOOL_OPTIONS.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              className={entry.id === tool ? 'active' : ''}
-              onClick={() => {
-                setTool(entry.id)
-                setFile(null)
-                setMultiFiles([])
-                resetOutputs()
-              }}
-            >
-              {entry.label}
-            </button>
-          ))}
+          <section className="tool-group">
+            <p className="tool-group-title">Image Tools</p>
+            {IMAGE_TOOL_OPTIONS.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={entry.id === tool ? 'active' : ''}
+                onClick={() => {
+                  setTool(entry.id)
+                  setFile(null)
+                  setMultiFiles([])
+                  resetOutputs()
+                  resetToolSpecificState()
+                }}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </section>
+          <section className="tool-group">
+            <p className="tool-group-title">PDF Tools</p>
+            {PDF_TOOL_OPTIONS.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={entry.id === tool ? 'active' : ''}
+                onClick={() => {
+                  setTool(entry.id)
+                  setFile(null)
+                  setMultiFiles([])
+                  resetOutputs()
+                  resetToolSpecificState()
+                }}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </section>
         </nav>
       </header>
 
@@ -540,7 +762,7 @@ function App() {
               processedBytes={processedBytes}
             />
             {textOutput ? <textarea className="text-preview" readOnly value={textOutput}></textarea> : null}
-            {outputUrl && isImageTool(tool) ? (
+            {outputUrl && isImageTool(tool) && tool !== 'exif-view' ? (
               <figure className="preview-card">
                 <img src={outputUrl} alt="Processed output preview" />
                 <figcaption>Processed preview</figcaption>
