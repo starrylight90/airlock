@@ -12,6 +12,11 @@ import { watermarkImage } from './tools/image/watermark'
 import { collageImages } from './tools/image/collage'
 import { readExif, stripExif } from './tools/image/exif'
 import { removeImageBackground } from './tools/image/backgroundRemove'
+import { generateQrPng } from './tools/utils/qr'
+import { processBase64, type Base64Mode } from './tools/utils/base64'
+import { generateHash, type HashAlgorithm } from './tools/utils/hash'
+import { convertColor } from './tools/utils/color'
+import { processJson, type JsonMode } from './tools/utils/json'
 import type { ToolId } from './types'
 
 const IMAGE_TOOL_OPTIONS = [
@@ -39,7 +44,15 @@ const PDF_TOOL_OPTIONS = [
   { id: 'pdf-extract-text', label: 'Extract Text', subtitle: 'Pull readable text into a downloadable TXT file.' },
 ] as const
 
-const TOOL_OPTIONS = [...IMAGE_TOOL_OPTIONS, ...PDF_TOOL_OPTIONS]
+const UTILITY_TOOL_OPTIONS = [
+  { id: 'util-qr', label: 'QR Generator', subtitle: 'Generate PNG QR codes from text or URLs.' },
+  { id: 'util-base64', label: 'Base64 Encode/Decode', subtitle: 'Encode text/files or decode Base64 payloads locally.' },
+  { id: 'util-hash', label: 'Hash Generator', subtitle: 'Create SHA-256/SHA-384/SHA-512 digests in-browser.' },
+  { id: 'util-color', label: 'Color Converter', subtitle: 'Convert between HEX, RGB, and HSL formats.' },
+  { id: 'util-json', label: 'JSON Formatter', subtitle: 'Format, minify, or validate JSON payloads safely.' },
+] as const
+
+const TOOL_OPTIONS = [...IMAGE_TOOL_OPTIONS, ...PDF_TOOL_OPTIONS, ...UTILITY_TOOL_OPTIONS]
 
 type ToolOption = (typeof TOOL_OPTIONS)[number]
 
@@ -55,6 +68,16 @@ function isImageTool(tool: ToolId): boolean {
     tool === 'exif-view' ||
     tool === 'exif-strip' ||
     tool === 'background-remove'
+  )
+}
+
+function isUtilityTool(tool: ToolId): boolean {
+  return (
+    tool === 'util-qr' ||
+    tool === 'util-base64' ||
+    tool === 'util-hash' ||
+    tool === 'util-color' ||
+    tool === 'util-json'
   )
 }
 
@@ -88,6 +111,18 @@ function App() {
   const [collagePreset, setCollagePreset] = useState('2x2')
   const [collageGap, setCollageGap] = useState(16)
   const [collageBg, setCollageBg] = useState('#ffffff')
+  const [qrText, setQrText] = useState('https://github.com/starrylight90/airlock')
+  const [qrSize, setQrSize] = useState(512)
+  const [qrErrorLevel, setQrErrorLevel] = useState<'L' | 'M' | 'Q' | 'H'>('M')
+  const [base64Mode, setBase64Mode] = useState<Base64Mode>('encode')
+  const [base64Source, setBase64Source] = useState<'text' | 'file'>('text')
+  const [base64Input, setBase64Input] = useState('')
+  const [hashInputMode, setHashInputMode] = useState<'text' | 'file'>('text')
+  const [hashInput, setHashInput] = useState('')
+  const [hashAlgorithm, setHashAlgorithm] = useState<HashAlgorithm>('SHA-256')
+  const [colorInput, setColorInput] = useState('#136F63')
+  const [jsonInput, setJsonInput] = useState('{"airlock": true}')
+  const [jsonMode, setJsonMode] = useState<JsonMode>('format')
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -130,6 +165,8 @@ function App() {
     setFlipHorizontal(false)
     setFlipVertical(false)
     setWatermarkLogoFile(null)
+    setBase64Input('')
+    setHashInput('')
   }
 
   function onFileSelected(nextFile: File) {
@@ -222,6 +259,56 @@ function App() {
       } else if (tool === 'background-remove') {
         if (!file) throw new Error('Pick an image first.')
         result = await removeImageBackground(file)
+      } else if (tool === 'util-qr') {
+        result = await generateQrPng(qrText, qrSize, qrErrorLevel)
+      } else if (tool === 'util-base64') {
+        const base64Result = await processBase64(
+          base64Mode,
+          base64Input,
+          base64Source === 'file' ? file : null,
+        )
+        setTextOutput(base64Result.textPreview)
+        result = base64Result.result
+      } else if (tool === 'util-hash') {
+        const hashResult = await generateHash(
+          hashAlgorithm,
+          hashInput,
+          hashInputMode === 'file' ? file : null,
+        )
+        setTextOutput(hashResult.digest)
+        result = hashResult.result
+      } else if (tool === 'util-color') {
+        const converted = convertColor(colorInput)
+        const pretty = JSON.stringify(converted, null, 2)
+        const blob = new Blob([pretty], { type: 'application/json;charset=utf-8' })
+        setTextOutput(pretty)
+        result = {
+          blob,
+          outputName: 'airlock-color-conversion.json',
+          meta: {
+            originalBytes: new TextEncoder().encode(colorInput).byteLength,
+            processedBytes: blob.size,
+          },
+        }
+      } else if (tool === 'util-json') {
+        const jsonResult = processJson(jsonInput, jsonMode)
+        setTextOutput(jsonResult.output)
+        const blob = new Blob([jsonResult.output], {
+          type: jsonMode === 'validate' ? 'text/plain;charset=utf-8' : 'application/json;charset=utf-8',
+        })
+        result = {
+          blob,
+          outputName:
+            jsonMode === 'format'
+              ? 'airlock-formatted.json'
+              : jsonMode === 'minify'
+                ? 'airlock-minified.json'
+                : 'airlock-json-validation.txt',
+          meta: {
+            originalBytes: new TextEncoder().encode(jsonInput).byteLength,
+            processedBytes: blob.size,
+          },
+        }
       } else if (tool === 'pdf-merge') {
         const { mergePdfs } = await import('./tools/pdf/merge')
         const mergeResult = await mergePdfs(multiFiles)
@@ -369,14 +456,50 @@ function App() {
   const activeTool = useMemo(() => TOOL_OPTIONS.find((entry) => entry.id === tool) as ToolOption, [tool])
 
   const canProcess = useMemo(() => {
+    if (tool === 'util-qr') {
+      return qrText.trim().length > 0
+    }
+    if (tool === 'util-color') {
+      return colorInput.trim().length > 0
+    }
+    if (tool === 'util-json') {
+      return jsonInput.trim().length > 0
+    }
+    if (tool === 'util-base64') {
+      return base64Source === 'file' ? Boolean(file) : base64Input.trim().length > 0
+    }
+    if (tool === 'util-hash') {
+      return hashInputMode === 'file' ? Boolean(file) : hashInput.trim().length > 0
+    }
     if (tool === 'pdf-merge' || tool === 'images-to-pdf' || tool === 'collage') {
       return multiFiles.length > 0
     }
     return Boolean(file)
-  }, [file, multiFiles.length, tool])
+  }, [
+    base64Input,
+    base64Source,
+    colorInput,
+    file,
+    hashInput,
+    hashInputMode,
+    jsonInput,
+    multiFiles.length,
+    qrText,
+    tool,
+  ])
 
-  const acceptPrefix = isImageTool(tool) || tool === 'images-to-pdf' ? 'image/' : 'application/pdf'
-  const acceptFilter = isImageTool(tool) || tool === 'images-to-pdf' ? 'image/*' : 'application/pdf'
+  const acceptPrefix =
+    isImageTool(tool) || tool === 'images-to-pdf'
+      ? 'image/'
+      : tool === 'util-base64' || tool === 'util-hash'
+        ? ''
+        : 'application/pdf'
+  const acceptFilter =
+    isImageTool(tool) || tool === 'images-to-pdf'
+      ? 'image/*'
+      : tool === 'util-base64' || tool === 'util-hash'
+        ? '*/*'
+        : 'application/pdf'
 
   function renderControls() {
     return (
@@ -578,6 +701,151 @@ function App() {
           </>
         )}
 
+        {tool === 'util-qr' && (
+          <>
+            <label className="control-inline">
+              <span>QR content</span>
+              <textarea
+                rows={4}
+                value={qrText}
+                onChange={(event) => setQrText(event.target.value)}
+                placeholder="https://example.com"
+              ></textarea>
+            </label>
+            <label className="control-inline">
+              <span>PNG size (px)</span>
+              <input
+                type="number"
+                min={128}
+                max={2048}
+                value={qrSize}
+                onChange={(event) => setQrSize(Math.max(128, Number(event.target.value) || 128))}
+              />
+            </label>
+            <label className="control-inline">
+              <span>Error correction</span>
+              <select
+                value={qrErrorLevel}
+                onChange={(event) => setQrErrorLevel(event.target.value as 'L' | 'M' | 'Q' | 'H')}
+              >
+                <option value="L">Low (L)</option>
+                <option value="M">Medium (M)</option>
+                <option value="Q">Quartile (Q)</option>
+                <option value="H">High (H)</option>
+              </select>
+            </label>
+          </>
+        )}
+
+        {tool === 'util-base64' && (
+          <>
+            <label className="control-inline">
+              <span>Mode</span>
+              <select value={base64Mode} onChange={(event) => setBase64Mode(event.target.value as Base64Mode)}>
+                <option value="encode">Encode</option>
+                <option value="decode">Decode</option>
+              </select>
+            </label>
+            {base64Mode === 'encode' && (
+              <label className="control-inline">
+                <span>Input source</span>
+                <select
+                  value={base64Source}
+                  onChange={(event) => setBase64Source(event.target.value as 'text' | 'file')}
+                >
+                  <option value="text">Text</option>
+                  <option value="file">File</option>
+                </select>
+              </label>
+            )}
+            {(base64Mode === 'decode' || base64Source === 'text') && (
+              <label className="control-inline">
+                <span>{base64Mode === 'decode' ? 'Base64 payload' : 'Text input'}</span>
+                <textarea
+                  rows={6}
+                  value={base64Input}
+                  onChange={(event) => setBase64Input(event.target.value)}
+                  placeholder={
+                    base64Mode === 'decode'
+                      ? 'Paste Base64 or data URL'
+                      : 'Enter text to convert into Base64 output'
+                  }
+                ></textarea>
+              </label>
+            )}
+          </>
+        )}
+
+        {tool === 'util-hash' && (
+          <>
+            <label className="control-inline">
+              <span>Algorithm</span>
+              <select
+                value={hashAlgorithm}
+                onChange={(event) => setHashAlgorithm(event.target.value as HashAlgorithm)}
+              >
+                <option value="SHA-256">SHA-256</option>
+                <option value="SHA-384">SHA-384</option>
+                <option value="SHA-512">SHA-512</option>
+              </select>
+            </label>
+            <label className="control-inline">
+              <span>Input source</span>
+              <select
+                value={hashInputMode}
+                onChange={(event) => setHashInputMode(event.target.value as 'text' | 'file')}
+              >
+                <option value="text">Text</option>
+                <option value="file">File</option>
+              </select>
+            </label>
+            {hashInputMode === 'text' && (
+              <label className="control-inline">
+                <span>Text input</span>
+                <textarea
+                  rows={5}
+                  value={hashInput}
+                  onChange={(event) => setHashInput(event.target.value)}
+                  placeholder="Enter text to hash"
+                ></textarea>
+              </label>
+            )}
+          </>
+        )}
+
+        {tool === 'util-color' && (
+          <label className="control-inline">
+            <span>Color input (#hex, rgb, hsl)</span>
+            <input
+              value={colorInput}
+              onChange={(event) => setColorInput(event.target.value)}
+              placeholder="#136F63 or rgb(19, 111, 99)"
+            />
+          </label>
+        )}
+
+        {tool === 'util-json' && (
+          <>
+            <label className="control-inline">
+              <span>Mode</span>
+              <select value={jsonMode} onChange={(event) => setJsonMode(event.target.value as JsonMode)}>
+                <option value="format">Format</option>
+                <option value="minify">Minify</option>
+                <option value="validate">Validate</option>
+              </select>
+            </label>
+            <label className="control-inline">
+              <span>JSON input</span>
+              <textarea
+                rows={9}
+                value={jsonInput}
+                onChange={(event) => setJsonInput(event.target.value)}
+                placeholder='{"airlock": true}'
+              ></textarea>
+            </label>
+          </>
+        )}
+
         {tool === 'pdf-split' && (
           <>
             <label className="control-inline">
@@ -662,6 +930,28 @@ function App() {
   }
 
   function renderDropZone() {
+    if (tool === 'util-qr' || tool === 'util-color' || tool === 'util-json') {
+      return (
+        <section className="result-card pending">
+          <h3>Direct Input Mode</h3>
+          <p>This utility uses control-panel input only. No file upload is required.</p>
+        </section>
+      )
+    }
+
+    if (
+      (tool === 'util-base64' && base64Mode === 'encode' && base64Source === 'text') ||
+      (tool === 'util-base64' && base64Mode === 'decode') ||
+      (tool === 'util-hash' && hashInputMode === 'text')
+    ) {
+      return (
+        <section className="result-card pending">
+          <h3>Text Input Mode</h3>
+          <p>File drop zone is disabled for this mode. Provide input in the controls panel.</p>
+        </section>
+      )
+    }
+
     if (tool === 'pdf-merge' || tool === 'images-to-pdf' || tool === 'collage') {
       return (
         <section className="result-card pending">
@@ -679,7 +969,7 @@ function App() {
         <FileDropZone
           acceptedMimePrefix={acceptPrefix}
           accept={acceptFilter}
-          title={isImageTool(tool) ? 'Drop an image here' : 'Drop a PDF here'}
+          title={isImageTool(tool) ? 'Drop an image here' : isUtilityTool(tool) ? 'Drop a file here' : 'Drop a PDF here'}
           subtitle="or click to browse your device"
           file={file}
           onFileSelected={onFileSelected}
@@ -727,6 +1017,25 @@ function App() {
           <section className="tool-group">
             <p className="tool-group-title">PDF Tools</p>
             {PDF_TOOL_OPTIONS.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={entry.id === tool ? 'active' : ''}
+                onClick={() => {
+                  setTool(entry.id)
+                  setFile(null)
+                  setMultiFiles([])
+                  resetOutputs()
+                  resetToolSpecificState()
+                }}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </section>
+          <section className="tool-group">
+            <p className="tool-group-title">Utility Tools</p>
+            {UTILITY_TOOL_OPTIONS.map((entry) => (
               <button
                 key={entry.id}
                 type="button"

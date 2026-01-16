@@ -8,7 +8,7 @@ Airlock is a local-first file utility suite. Every file operation runs in the br
 - Airlock is designed for privacy-sensitive workflows where local-only processing is non-negotiable.
 - The UI is built to be fast, clear, and production-friendly for open-source adoption.
 
-## Current status (Phase 3)
+## Current status (Phase 4)
 
 Implemented in this version:
 
@@ -29,6 +29,14 @@ Image tools added in Phase 3:
 - EXIF Viewer
 - EXIF Stripper (re-export without metadata)
 - Background Remove (in-browser model)
+
+Utility tools added in Phase 4:
+
+- QR Code Generator (PNG output)
+- Base64 Encode/Decode (text and file workflows)
+- Hash Generator (SHA-256, SHA-384, SHA-512)
+- Color Converter (HEX, RGB, HSL)
+- JSON Formatter / Minifier / Validator
 
 PDF tools added in Phase 2:
 
@@ -70,6 +78,7 @@ npm run test
 
 Current test coverage focuses on PDF page-selection parsing logic used by split/rotate/reorder flows.
 Phase 3 adds unit coverage for image math helpers used by crop and collage workflows.
+Phase 4 adds utility coverage for color conversion and JSON validation/formatting behavior.
 
 ## Project structure
 
@@ -93,6 +102,12 @@ src/
       backgroundRemove.ts
       math.ts
       shared.ts
+    utils/
+      qr.ts
+      base64.ts
+      hash.ts
+      color.ts
+      json.ts
     pdf/
       merge.ts
       split.ts
@@ -107,13 +122,14 @@ src/
   index.css
 ```
 
-## Known limitations (Phase 3)
+## Known limitations (Phase 4)
 
 - Password protect/unlock is intentionally marked as a transparent placeholder in this phase.
 - Per-page split currently exposes range split and a single-page preview split; full one-file-per-page bundle mode is planned for a follow-up.
 - PDF rendering uses browser memory; very large PDFs may need future streaming optimizations.
 - Background removal model can take longer on first run because model assets initialize in browser context.
 - EXIF availability depends on source format and device metadata behavior.
+- Base64 decode assumes valid payload input; malformed payloads surface explicit decoding errors.
 
 ## Next phases
 

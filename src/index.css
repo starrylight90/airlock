@@ -100,9 +100,9 @@ body {
 
 .tool-switcher {
   display: grid;
-  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap: 12px;
-  width: min(860px, 100%);
+  width: min(1080px, 100%);
 }
 
 .tool-group {
@@ -235,11 +235,17 @@ body {
 
 .control-inline input,
 .control-inline select,
-.control-inline input[type='file'] {
+.control-inline input[type='file'],
+.control-inline textarea {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px 11px;
   font: inherit;
+}
+
+.control-inline textarea {
+  min-height: 120px;
+  resize: vertical;
 }
 
 .control-inline small {
