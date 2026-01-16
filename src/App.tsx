@@ -12,6 +12,7 @@ import { watermarkImage } from './tools/image/watermark'
 import { collageImages } from './tools/image/collage'
 import { readExif, stripExif } from './tools/image/exif'
 import { removeImageBackground } from './tools/image/backgroundRemove'
+import { processImageBatch, type BatchImageOptions } from './tools/batch/imageBatch'
 import { generateQrPng } from './tools/utils/qr'
 import { processBase64, type Base64Mode } from './tools/utils/base64'
 import { generateHash, type HashAlgorithm } from './tools/utils/hash'
@@ -30,6 +31,7 @@ const IMAGE_TOOL_OPTIONS = [
   { id: 'exif-view', label: 'EXIF Viewer', subtitle: 'Inspect metadata and privacy-sensitive camera fields.' },
   { id: 'exif-strip', label: 'EXIF Stripper', subtitle: 'Re-export image without embedded metadata.' },
   { id: 'background-remove', label: 'Background Remove', subtitle: 'Run segmentation model in-browser to isolate subject.' },
+  { id: 'batch-image', label: 'Batch Image Pipeline', subtitle: 'Compress, resize, or convert multiple images into one ZIP package.' },
 ] as const
 
 const PDF_TOOL_OPTIONS = [
@@ -111,6 +113,9 @@ function App() {
   const [collagePreset, setCollagePreset] = useState('2x2')
   const [collageGap, setCollageGap] = useState(16)
   const [collageBg, setCollageBg] = useState('#ffffff')
+  const [batchMode, setBatchMode] = useState<BatchImageOptions['mode']>('compress')
+  const [batchResizeWidth, setBatchResizeWidth] = useState(1280)
+  const [batchResizeHeight, setBatchResizeHeight] = useState(720)
   const [qrText, setQrText] = useState('https://github.com/starrylight90/airlock')
   const [qrSize, setQrSize] = useState(512)
   const [qrErrorLevel, setQrErrorLevel] = useState<'L' | 'M' | 'Q' | 'H'>('M')
@@ -132,6 +137,10 @@ function App() {
   const [textOutput, setTextOutput] = useState<string | null>(null)
   const [originalBytes, setOriginalBytes] = useState<number | null>(null)
   const [processedBytes, setProcessedBytes] = useState<number | null>(null)
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const stored = globalThis.localStorage?.getItem('airlock-theme')
+    return stored === 'dark' ? 'dark' : 'light'
+  })
 
   useEffect(() => {
     return () => {
@@ -143,6 +152,11 @@ function App() {
       }
     }
   }, [previewUrl, outputUrl])
+
+  useEffect(() => {
+    document.body.classList.toggle('theme-dark', theme === 'dark')
+    globalThis.localStorage?.setItem('airlock-theme', theme)
+  }, [theme])
 
   function resetOutputs() {
     if (outputUrl) {
@@ -259,6 +273,16 @@ function App() {
       } else if (tool === 'background-remove') {
         if (!file) throw new Error('Pick an image first.')
         result = await removeImageBackground(file)
+      } else if (tool === 'batch-image') {
+        const batchResult = await processImageBatch(multiFiles, {
+          mode: batchMode,
+          quality,
+          width: batchResizeWidth,
+          height: batchResizeHeight,
+          format,
+        })
+        setTextOutput(batchResult.summary)
+        result = batchResult.result
       } else if (tool === 'util-qr') {
         result = await generateQrPng(qrText, qrSize, qrErrorLevel)
       } else if (tool === 'util-base64') {
@@ -471,7 +495,7 @@ function App() {
     if (tool === 'util-hash') {
       return hashInputMode === 'file' ? Boolean(file) : hashInput.trim().length > 0
     }
-    if (tool === 'pdf-merge' || tool === 'images-to-pdf' || tool === 'collage') {
+    if (tool === 'pdf-merge' || tool === 'images-to-pdf' || tool === 'collage' || tool === 'batch-image') {
       return multiFiles.length > 0
     }
     return Boolean(file)
@@ -504,13 +528,15 @@ function App() {
   function renderControls() {
     return (
       <div className="controls-stack">
-        {(tool === 'pdf-merge' || tool === 'images-to-pdf' || tool === 'collage') && (
+        {(tool === 'pdf-merge' || tool === 'images-to-pdf' || tool === 'collage' || tool === 'batch-image') && (
           <label className="control-inline">
             <span>
               {tool === 'pdf-merge'
                 ? 'Select multiple PDF files'
                 : tool === 'collage'
                   ? 'Select multiple images for collage'
+                  : tool === 'batch-image'
+                    ? 'Select multiple images for batch processing'
                   : 'Select multiple image files'}
             </span>
             <input
@@ -521,6 +547,75 @@ function App() {
             />
             <small>{multiFiles.length} file(s) selected</small>
           </label>
+        )}
+
+        {tool === 'batch-image' && (
+          <>
+            <label className="control-inline">
+              <span>Batch mode</span>
+              <select
+                value={batchMode}
+                onChange={(event) => setBatchMode(event.target.value as BatchImageOptions['mode'])}
+              >
+                <option value="compress">Compress</option>
+                <option value="resize">Resize</option>
+                <option value="convert">Convert</option>
+              </select>
+            </label>
+
+            {(batchMode === 'compress' || batchMode === 'convert') && (
+              <label className="control">
+                <span>Quality: {Math.round(quality * 100)}%</span>
+                <input
+                  type="range"
+                  min="0.3"
+                  max="0.98"
+                  step="0.01"
+                  value={quality}
+                  onChange={(event) => setQuality(Number(event.target.value))}
+                />
+              </label>
+            )}
+
+            {batchMode === 'resize' && (
+              <>
+                <label className="control-inline">
+                  <span>Target width</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={9999}
+                    value={batchResizeWidth}
+                    onChange={(event) => setBatchResizeWidth(Math.max(1, Number(event.target.value) || 1))}
+                  />
+                </label>
+                <label className="control-inline">
+                  <span>Target height</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={9999}
+                    value={batchResizeHeight}
+                    onChange={(event) => setBatchResizeHeight(Math.max(1, Number(event.target.value) || 1))}
+                  />
+                </label>
+              </>
+            )}
+
+            {batchMode === 'convert' && (
+              <label className="control-inline">
+                <span>Output format</span>
+                <select
+                  value={format}
+                  onChange={(event) => setFormat(event.target.value as 'image/png' | 'image/jpeg' | 'image/webp')}
+                >
+                  <option value="image/webp">WebP</option>
+                  <option value="image/jpeg">JPEG</option>
+                  <option value="image/png">PNG</option>
+                </select>
+              </label>
+            )}
+          </>
         )}
 
         {tool === 'compress' && (
@@ -952,13 +1047,19 @@ function App() {
       )
     }
 
-    if (tool === 'pdf-merge' || tool === 'images-to-pdf' || tool === 'collage') {
+    if (tool === 'pdf-merge' || tool === 'images-to-pdf' || tool === 'collage' || tool === 'batch-image') {
       return (
         <section className="result-card pending">
           <h3>Multi-file Input</h3>
           <p>
             Use the controls panel to select multiple files for{' '}
-            {tool === 'pdf-merge' ? 'merge' : tool === 'collage' ? 'collage' : 'images-to-pdf'}.
+            {tool === 'pdf-merge'
+              ? 'merge'
+              : tool === 'collage'
+                ? 'collage'
+                : tool === 'batch-image'
+                  ? 'batch image processing'
+                  : 'images-to-pdf'}.
           </p>
         </section>
       )
@@ -990,9 +1091,18 @@ function App() {
       <div className="ambient ambient-b" aria-hidden="true"></div>
 
       <header className="top-bar">
-        <div className="brand">
-          <strong>Airlock</strong>
-          <span>Local-First File Utilities</span>
+        <div className="top-meta">
+          <div className="brand">
+            <strong>Airlock</strong>
+            <span>Local-First File Utilities</span>
+          </div>
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
+          >
+            {theme === 'light' ? 'Enable Dark Mode' : 'Enable Light Mode'}
+          </button>
         </div>
         <nav className="tool-switcher" aria-label="Tool selector">
           <section className="tool-group">

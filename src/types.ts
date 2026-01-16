@@ -9,6 +9,7 @@ export type ToolId =
   | 'exif-view'
   | 'exif-strip'
   | 'background-remove'
+  | 'batch-image'
   | 'util-qr'
   | 'util-base64'
   | 'util-hash'
