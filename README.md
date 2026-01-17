@@ -8,7 +8,7 @@ Airlock is a local-first file utility suite. Every file operation runs in the br
 - Airlock is designed for privacy-sensitive workflows where local-only processing is non-negotiable.
 - The UI is built to be fast, clear, and production-friendly for open-source adoption.
 
-## Current status (Phase 4)
+## Current status (Phase 5)
 
 Implemented in this version:
 
@@ -37,6 +37,17 @@ Utility tools added in Phase 4:
 - Hash Generator (SHA-256, SHA-384, SHA-512)
 - Color Converter (HEX, RGB, HSL)
 - JSON Formatter / Minifier / Validator
+
+Phase 5 additions:
+
+- Batch Image Pipeline (compress, resize, convert)
+- ZIP packaging for batch output
+- Theme toggle (light/dark) and responsive polish
+- Expanded UI smoke coverage across all tool groups
+
+Audit notes:
+
+- Local-only checklist and results: `docs/phase5-local-only-audit.md`
 
 PDF tools added in Phase 2:
 
@@ -79,6 +90,7 @@ npm run test
 Current test coverage focuses on PDF page-selection parsing logic used by split/rotate/reorder flows.
 Phase 3 adds unit coverage for image math helpers used by crop and collage workflows.
 Phase 4 adds utility coverage for color conversion and JSON validation/formatting behavior.
+Phase 5 adds batch planning tests and end-to-end UI validation for upload/edit/export flows.
 
 ## Project structure
 
@@ -90,6 +102,9 @@ src/
     PrivacyBanner.tsx
     ToolLayout.tsx
   tools/
+    batch/
+      imageBatch.ts
+      plan.ts
     image/
       compress.ts
       resize.ts
@@ -122,7 +137,7 @@ src/
   index.css
 ```
 
-## Known limitations (Phase 4)
+## Known limitations (Phase 5)
 
 - Password protect/unlock is intentionally marked as a transparent placeholder in this phase.
 - Per-page split currently exposes range split and a single-page preview split; full one-file-per-page bundle mode is planned for a follow-up.
@@ -130,11 +145,9 @@ src/
 - Background removal model can take longer on first run because model assets initialize in browser context.
 - EXIF availability depends on source format and device metadata behavior.
 - Base64 decode assumes valid payload input; malformed payloads surface explicit decoding errors.
+- Background removal performance can vary by browser CPU/GPU and model warm-up state.
 
 ## Next phases
 
-- Phase 3: advanced image tools
-- Phase 4: utilities pack
-- Phase 5: batch and polish
 - Phase 6: offline packaging
 - Phase 7: docs and demos
