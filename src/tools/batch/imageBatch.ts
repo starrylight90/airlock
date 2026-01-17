@@ -39,7 +39,7 @@ export async function processImageBatch(
 
   for (const file of files) {
     const transformed = await processSingle(file, options)
-    zip.file(transformed.outputName, transformed.blob)
+    zip.file(`outputs/${transformed.outputName}`, transformed.blob)
     originalBytes += transformed.meta.originalBytes
     transformedBytes += transformed.meta.processedBytes
   }
@@ -52,6 +52,19 @@ export async function processImageBatch(
       `Files processed: ${files.length}`,
       `Approx transformed bytes: ${transformedBytes}`,
     ].join('\n'),
+  )
+
+  zip.file(
+    'manifest.json',
+    JSON.stringify(
+      {
+        mode: options.mode,
+        count: files.length,
+        generatedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
   )
 
   const blob = await zip.generateAsync({
