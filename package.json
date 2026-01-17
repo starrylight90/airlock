@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:offline": "npm run build && node scripts/build-offline-html.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run --coverage"
