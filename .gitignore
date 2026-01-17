@@ -13,6 +13,7 @@ dist-ssr
 *.local
 commit.md
 coverage
+tmp-ui-test
 
 # Editor directories and files
 .vscode/*
