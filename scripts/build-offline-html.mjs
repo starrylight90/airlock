@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const root = process.cwd()
 const distDir = path.join(root, 'dist')
@@ -11,18 +12,18 @@ async function fileText(relativePath) {
   return await fs.readFile(full, 'utf8')
 }
 
-function rewriteAssetPaths(content) {
+export function rewriteAssetPaths(content) {
   return content
     .replace(/(["'`])\/assets\//g, '$1./assets/')
     .replace(/(["'`])\.\/(?!assets\/)([^"'`]+?\.(?:js|mjs|css|wasm))\1/g, '$1./assets/$2$1')
     .replace(/url\(\/assets\//g, 'url(./assets/')
 }
 
-function sanitizeInlineModule(code) {
+export function sanitizeInlineModule(code) {
   return rewriteAssetPaths(code).replace(/<\/script/gi, '<\\/script')
 }
 
-function toTitleBanner() {
+export function toTitleBanner() {
   return [
     '<section style="margin:0 0 12px;padding:10px 12px;border:1px solid #e7d4bf;border-radius:10px;background:#fff5e7;font:600 13px/1.4 Trebuchet MS, sans-serif;color:#102a43;">',
     'Offline Artifact Mode: this HTML is self-contained for core shell and tool logic. Some advanced features may still depend on additional bundled assets in the same folder.',
@@ -30,7 +31,7 @@ function toTitleBanner() {
   ].join('')
 }
 
-async function run() {
+export async function run() {
   let html = await fs.readFile(indexPath, 'utf8')
 
   html = html.replace(/<link[^>]*rel="modulepreload"[^>]*>/g, '')
@@ -55,8 +56,12 @@ async function run() {
   console.log(`Created offline artifact: ${offlinePath}`)
 }
 
-run().catch((error) => {
-  console.error('Failed to build offline html artifact.')
-  console.error(error)
-  process.exitCode = 1
-})
+const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+
+if (isDirectRun) {
+  run().catch((error) => {
+    console.error('Failed to build offline html artifact.')
+    console.error(error)
+    process.exitCode = 1
+  })
+}

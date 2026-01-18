@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "build:offline": "npm run build && node scripts/build-offline-html.mjs",
     "release:artifacts": "npm run build:offline && node scripts/release-artifacts.mjs",
+    "verify:release": "npm run release:artifacts && node scripts/verify-release.mjs",
+    "hardening:prod": "npm run lint && npm run test && npm run verify:release",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run --coverage"
