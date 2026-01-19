@@ -16,7 +16,7 @@ function parseOrder(spec: string, pageCount: number): number[] {
 export async function reorderAndDeletePdf(file: File, orderSpec: string, deleteSpec: string): Promise<PdfResult> {
   const source = await readPdf(file)
   const pageCount = source.getPageCount()
-  const deletes = new Set(parsePageSelection(deleteSpec, pageCount))
+  const deletes = new Set(deleteSpec.trim() ? parsePageSelection(deleteSpec, pageCount) : [])
 
   const kept: number[] = []
   for (let i = 0; i < pageCount; i += 1) {
