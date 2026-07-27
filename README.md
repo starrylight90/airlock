@@ -177,7 +177,7 @@ src/
   index.css
 ```
 
-## Known limitations (Phase 7)
+## Known limitations
 
 - Password protect/unlock is intentionally marked as a transparent placeholder in this phase.
 - Per-page split currently exposes range split and a single-page preview split; full one-file-per-page bundle mode is planned for a follow-up.
@@ -187,10 +187,6 @@ src/
 - Base64 decode assumes valid payload input; malformed payloads surface explicit decoding errors.
 - Background removal performance can vary by browser CPU/GPU and model warm-up state.
 - Offline package still requires the local `assets` directory next to `airlock-offline.html` for chunk/model/worker files.
-
-## Next phases
-
-- Phase 8: packaging hardening and optional portable wrappers
 
 ## Screenshot evidence (Phase 6)
 
